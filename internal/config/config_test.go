@@ -45,7 +45,7 @@ func TestLoadInvalidYAML(t *testing.T) {
 func TestLoadValidYAML(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "ok.yaml")
-	data := []byte("defaults:\n  message: hello\n  title: world\n  icon: /tmp/icon.png\n")
+	data := []byte("mode: greeting\ndefaults:\n  message: hello\n  title: world\n  icon: /tmp/icon.png\n")
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("write failed: %v", err)
 	}
@@ -65,5 +65,22 @@ func TestLoadValidYAML(t *testing.T) {
 	}
 	if cfg.Defaults.Icon != "/tmp/icon.png" {
 		t.Fatalf("unexpected icon: %q", cfg.Defaults.Icon)
+	}
+}
+
+func TestLoadInvalidMode(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "bad.yaml")
+	data := []byte("mode: nope\n")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	_, exists, err := Load(path)
+	if err == nil {
+		t.Fatalf("expected error for invalid mode")
+	}
+	if !exists {
+		t.Fatalf("expected exists=true for invalid mode")
 	}
 }

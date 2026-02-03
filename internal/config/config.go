@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	Mode     string   `yaml:"mode"`
 	Defaults Defaults `yaml:"defaults"`
 }
 
@@ -39,6 +40,21 @@ func Load(path string) (Config, bool, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, true, fmt.Errorf("invalid yaml in %s: %w", path, err)
 	}
+	if err := validate(cfg); err != nil {
+		return Config{}, true, fmt.Errorf("invalid config %s: %w", path, err)
+	}
 
 	return cfg, true, nil
+}
+
+func validate(cfg Config) error {
+	if cfg.Mode == "" {
+		return nil
+	}
+	switch cfg.Mode {
+	case "greeting", "evaluate":
+		return nil
+	default:
+		return fmt.Errorf("unsupported mode %q (expected greeting or evaluate)", cfg.Mode)
+	}
 }

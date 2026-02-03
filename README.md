@@ -31,6 +31,25 @@ go build -o herald ./cmd/herald
 
 # with icon (Linux only)
 ./herald "Backup finished" --icon /path/to/icon.png
+
+# install shell hook to use previous command's exit code automatically
+# zsh/bash (use the full path or ./herald if not in PATH)
+eval "$(./herald hook --shell zsh)"
+# fish
+./herald hook --shell fish | source
+
+# or install permanently into your shell config
+./herald hook --shell zsh --install
+./herald hook --shell bash --install
+./herald hook --shell fish --install
+
+# after hook: herald uses previous exit code via HERALD_EXIT_CODE
+# and previous command string via HERALD_PREV_CMD for the title fallback
+command; herald
+command; herald "Custom message"
+
+# force derived success/failure message (requires exit code via hook or env)
+command; herald --evaluate
 ```
 
 ## Config
@@ -39,6 +58,7 @@ Default config path: `~/.heraldrc`
 Example:
 
 ```yaml
+mode: greeting # or "evaluate"
 defaults:
   message: "Hello from herald"
   title: "Herald"
@@ -52,8 +72,20 @@ Config precedence:
 
 Built-in defaults:
 - Title: `Herald`
-- Message: (none)
+- Message: `Hello from Herald`
 - Icon: (none)
+
+Flags:
+- `--exit-code N` pass an exit code to derive a message
+- `--evaluate` use success/failure derived message when exit code is available
+
+Config:
+- `mode: greeting|evaluate` (default: `greeting`)
+
+Environment:
+- `HERALD_EXIT_CODE` set by the hook to pass the previous command status
+- `HERALD_PREV_CMD` set by the hook to pass the previous command string for title fallback
+- `HERALD_HOOK=1` set by the hook so `herald` knows the hook is installed
 
 ## Exit Codes
 - `0` on success
