@@ -13,6 +13,21 @@ class Herald < Formula
     bin.install "herald"
   end
 
+  def caveats
+    <<~EOS
+      Enable the shell hook to capture the previous command's exit code:
+
+        # zsh
+        eval "$(herald hook --shell zsh)"
+
+        # bash
+        eval "$(herald hook --shell bash)"
+
+        # fish
+        herald hook --shell fish | source
+    EOS
+  end
+
   test do
     system bin/"herald", "--help"
   end

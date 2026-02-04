@@ -33,8 +33,21 @@ make release
 Once you publish a tagged release (e.g., `v0.1.0`), you can install via:
 
 ```bash
-brew tap lemomar/herald
+brew tap lemomar/herald https://github.com/lemomar/herald
 brew install herald
+```
+
+After installation, enable the shell hook so `herald` can capture the previous command's exit code:
+
+```bash
+# zsh
+eval "$(herald hook --shell zsh)"
+
+# bash
+eval "$(herald hook --shell bash)"
+
+# fish
+herald hook --shell fish | source
 ```
 
 ## Usage
