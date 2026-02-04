@@ -2,10 +2,12 @@
 
 `herald` is a minimal cross-platform CLI to send local desktop notifications.
 
+License: GPL-3.0
+
 ## Features (v0.1)
 - Local notifications
 - macOS via `osascript`
-- Linux via `notify-send`
+- Linux via `notify-send` (experimental)
 - Simple CLI with optional title/icon
 - YAML config at `~/.heraldrc`
 
@@ -23,9 +25,8 @@ Or using the Makefile:
 # dev build (heraldev)
 make build
 
-# release builds (herald)
+# release build (herald)
 make release
-make obfuscate
 ```
 
 ## Usage
