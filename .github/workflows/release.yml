@@ -41,7 +41,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           mkdir -p dist
-          go build -ldflags="-s -w" -o herald ./cmd/herald
+          make release
           tar -czf dist/herald_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz herald
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
