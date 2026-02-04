@@ -14,7 +14,18 @@ Build from source:
 
 ```bash
 # from repo root
-go build -o herald ./cmd/herald
+go build -o heraldev ./cmd/herald
+```
+
+Or using the Makefile:
+
+```bash
+# dev build (heraldev)
+make build
+
+# release builds (herald)
+make release
+make obfuscate
 ```
 
 ## Usage
