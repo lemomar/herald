@@ -78,10 +78,15 @@ jobs:
         run: |
           set -euo pipefail
           git checkout "$DEFAULT_BRANCH"
-          curl -L -o source.tar.gz "https://github.com/$REPO/archive/refs/tags/$TAG_NAME.tar.gz"
+          ENC_TAG=$(python - <<'PY'
+import os, urllib.parse
+print(urllib.parse.quote(os.environ["TAG_NAME"], safe=""))
+PY
+)
+          curl -L -o source.tar.gz "https://github.com/$REPO/archive/refs/tags/$ENC_TAG.tar.gz"
           SHA=$(shasum -a 256 source.tar.gz | awk '{print $1}')
           VERSION=${TAG_NAME#v}
-          perl -i -pe "s|^  url \".*\"$|  url \"https://github.com/$REPO/archive/refs/tags/$TAG_NAME.tar.gz\"|" Formula/herald.rb
+          perl -i -pe "s|^  url \".*\"$|  url \"https://github.com/$REPO/archive/refs/tags/$ENC_TAG.tar.gz\"|" Formula/herald.rb
           perl -i -pe "s|^  sha256 \".*\"$|  sha256 \"$SHA\"|" Formula/herald.rb
           perl -i -pe "s|^  version \".*\"$|  version \"$VERSION\"|" Formula/herald.rb
           if git diff --quiet; then
