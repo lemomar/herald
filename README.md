@@ -29,6 +29,14 @@ make build
 make release
 ```
 
+### Homebrew
+Once you publish a tagged release (e.g., `v0.1.0`), you can install via:
+
+```bash
+brew tap lemomar/herald
+brew install herald
+```
+
 ## Usage
 
 ```bash

@@ -1,0 +1,80 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            runner: macos-latest
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -ldflags="-s -w" -o herald ./cmd/herald
+          tar -czf dist/herald_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz herald
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+
+  update-formula:
+    runs-on: ubuntu-latest
+    needs: build-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Update Formula
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git checkout "$DEFAULT_BRANCH"
+          curl -L -o source.tar.gz "https://github.com/$REPO/archive/refs/tags/$TAG_NAME.tar.gz"
+          SHA=$(shasum -a 256 source.tar.gz | awk '{print $1}')
+          VERSION=${TAG_NAME#v}
+          perl -i -pe "s|^  url \".*\"$|  url \"https://github.com/$REPO/archive/refs/tags/$TAG_NAME.tar.gz\"|" Formula/herald.rb
+          perl -i -pe "s|^  sha256 \".*\"$|  sha256 \"$SHA\"|" Formula/herald.rb
+          perl -i -pe "s|^  version \".*\"$|  version \"$VERSION\"|" Formula/herald.rb
+          if git diff --quiet; then
+            echo "No formula changes."
+            exit 0
+          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add Formula/herald.rb
+          git commit -m "Update formula for $TAG_NAME"
+          git push origin "$DEFAULT_BRANCH"
