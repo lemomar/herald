@@ -10,7 +10,9 @@ class Herald < Formula
 
   def install
     system "go", "build", "-ldflags=-s -w", "-o", "herald", "./cmd/herald"
+    system "go", "build", "-ldflags=-s -w", "-o", "heraldctl", "./cmd/heraldctl"
     bin.install "herald"
+    bin.install "heraldctl"
   end
 
   def caveats
@@ -29,6 +31,7 @@ class Herald < Formula
   end
 
   test do
-    system bin/"herald", "--help"
+    system bin/"herald", "hook", "--shell", "zsh"
+    system bin/"heraldctl", "logs"
   end
 end

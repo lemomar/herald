@@ -1,7 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,51 +11,76 @@ import (
 
 	"herald/internal/cli"
 	"herald/internal/config"
+	"herald/internal/logcmd"
 	"herald/internal/notify"
 )
 
+var (
+	exitFn = os.Exit
+
+	getenvFn            = os.Getenv
+	currentOSFn         = func() string { return runtime.GOOS }
+	parseCLIFn          = cli.Parse
+	defaultConfigPathFn = config.DefaultPath
+	loadConfigFn        = config.Load
+	parseExitCodeFn     = cli.ParseExitCodeValue
+	validateIconFn      = notify.ValidateIcon
+	notifyForOSFn       = notify.ForOS
+	executablePathFn    = os.Executable
+	userHomeDirFn       = os.UserHomeDir
+	openHookFileFn      = os.OpenFile
+)
+
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "hook" {
-		if err := printHook(os.Args[2:]); err != nil {
+	if len(os.Args) > 1 && os.Args[1] == "logs" {
+		if err := runLogsAlias(os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(2)
+			exitFn(2)
 		}
 		return
 	}
 
-	if os.Getenv("HERALD_HOOK") != "1" {
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		if err := printHook(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			exitFn(2)
+		}
+		return
+	}
+
+	if getenvFn("HERALD_HOOK") != "1" {
 		fmt.Fprintln(os.Stderr, "tip: install the shell hook for automatic exit codes: `herald hook --shell zsh --install`")
 	}
 
-	opts, err := cli.Parse(os.Args[1:])
+	opts, err := parseCLIFn(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
+		exitFn(2)
 	}
 
 	cfgPath := opts.ConfigPath
 	if cfgPath == "" {
-		defaultPath, err := config.DefaultPath()
+		defaultPath, err := defaultConfigPathFn()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "failed to resolve config path:", err)
-			os.Exit(1)
+			exitFn(1)
 		}
 		cfgPath = defaultPath
 	}
 
-	cfg, _, err := config.Load(cfgPath)
+	cfg, _, err := loadConfigFn(cfgPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+		exitFn(1)
 	}
 
 	merged := cli.MergeWithConfig(opts, cfg)
 	if merged.ExitCode == nil {
-		if env := os.Getenv("HERALD_EXIT_CODE"); env != "" {
-			code, err := cli.ParseExitCodeValue(env)
+		if env := getenvFn("HERALD_EXIT_CODE"); env != "" {
+			code, err := parseExitCodeFn(env)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err.Error())
-				os.Exit(2)
+				exitFn(2)
 			}
 			merged.ExitCode = &code
 		}
@@ -61,11 +88,11 @@ func main() {
 	evaluateActive := merged.Evaluate || cfg.Mode == "evaluate"
 	message, explicit := cli.ResolveMessage(merged, cfg, evaluateActive)
 	merged.Message = message
-	prevCmd := strings.TrimSpace(os.Getenv("HERALD_PREV_CMD"))
+	prevCmd := strings.TrimSpace(getenvFn("HERALD_PREV_CMD"))
 	prevCmd = sanitizePrevCommand(prevCmd)
 	merged.Title = cli.ResolveTitle(merged, cfg, prevCmd, explicit, evaluateActive)
 
-	currentOS := runtime.GOOS
+	currentOS := currentOSFn()
 	if currentOS == "darwin" && merged.Icon != "" {
 		if merged.Verbose {
 			fmt.Fprintln(os.Stderr, "warning: macOS notifications do not support custom icons; ignoring --icon")
@@ -74,21 +101,21 @@ func main() {
 	}
 
 	if merged.Icon != "" {
-		if err := notify.ValidateIcon(merged.Icon); err != nil {
+		if err := validateIconFn(merged.Icon); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
+			exitFn(1)
 		}
 	}
 
-	notifier, err := notify.ForOS(currentOS)
+	notifier, err := notifyForOSFn(currentOS)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+		exitFn(1)
 	}
 
 	if err := notifier.Send(merged.Message, merged.Title, merged.Icon); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+		exitFn(1)
 	}
 
 	if merged.Verbose {
@@ -154,7 +181,7 @@ func printHook(args []string) error {
 	}
 
 	if shell == "" {
-		if env := os.Getenv("SHELL"); env != "" {
+		if env := getenvFn("SHELL"); env != "" {
 			if strings.Contains(env, "zsh") {
 				shell = "zsh"
 			} else if strings.Contains(env, "bash") {
@@ -168,7 +195,7 @@ func printHook(args []string) error {
 		shell = "zsh"
 	}
 
-	exe, err := os.Executable()
+	exe, err := executablePathFn()
 	if err != nil {
 		return fmt.Errorf("failed to resolve executable path: %w", err)
 	}
@@ -184,6 +211,26 @@ func printHook(args []string) error {
 
 	fmt.Println(script)
 	return nil
+}
+
+func runLogsAlias(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("logs", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	last := fs.Int("last", 0, "Show only the last N entries")
+	filter := fs.String("filter", "", "Filter logs by text")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected argument(s): %s", strings.Join(fs.Args(), " "))
+	}
+
+	return logcmd.Run(out, logcmd.Options{
+		Last:   *last,
+		Filter: *filter,
+	})
 }
 
 func hookScript(shell, exe string) (string, error) {
@@ -281,7 +328,7 @@ func hookScript(shell, exe string) (string, error) {
 }
 
 func installHook(shell, script string) error {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDirFn()
 	if err != nil {
 		return fmt.Errorf("failed to resolve home dir: %w", err)
 	}
@@ -307,11 +354,7 @@ func installHook(shell, script string) error {
 	if strings.Contains(content, startMarker) && strings.Contains(content, endMarker) {
 		before := strings.Split(content, startMarker)[0]
 		after := strings.Split(content, endMarker)
-		if len(after) > 1 {
-			content = before + block + after[1]
-		} else {
-			content = before + block
-		}
+		content = before + block + after[1]
 	} else {
 		content = content + block
 	}
@@ -319,7 +362,7 @@ func installHook(shell, script string) error {
 	if err := os.MkdirAll(filepath.Dir(rcPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
-	f, err := os.OpenFile(rcPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := openHookFileFn(rcPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open rc file: %w", err)
 	}

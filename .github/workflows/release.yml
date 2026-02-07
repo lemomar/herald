@@ -9,9 +9,21 @@ permissions:
   contents: write
 
 jobs:
+  coverage-gate:
+    name: coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Test + Coverage (>=95%)
+        run: make test
+
   build-release:
     name: build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ${{ matrix.runner }}
+    needs: coverage-gate
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +54,9 @@ jobs:
         run: |
           mkdir -p dist
           go build -ldflags="-s -w" -o herald ./cmd/herald
+          go build -ldflags="-s -w" -o heraldctl ./cmd/heraldctl
           tar -czf dist/herald_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz herald
+          tar -czf dist/heraldctl_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz heraldctl
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:

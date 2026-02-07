@@ -1,44 +1,23 @@
-# Herald (MVP)
+# Herald
 
-`herald` is a minimal cross-platform CLI to send local desktop notifications.
+`herald` provides local desktop notifications, and `heraldctl` manages a background daemon that receives notification events over WebSocket.
 
 License: GPL-3.0
 
-## Features (v0.1)
-- Local notifications
-- macOS via `osascript`
-- Linux via `notify-send` (experimental)
-- Simple CLI with optional title/icon
-- YAML config at `~/.heraldrc`
+## Binaries
+- `herald`: one-shot local notifications + shell hook helpers + `logs` alias
+- `heraldctl`: daemon lifecycle commands (`start`, `stop`, `status`, `restart`, `logs`)
 
-## Install
-Build from source:
-
+## Build
 ```bash
-# from repo root
-go build -o heraldev ./cmd/herald
-```
-
-Or using the Makefile:
-
-```bash
-# dev build (heraldev)
+# dev
 make build
 
-# release build (herald)
+# release artifacts in repo root
 make release
 ```
 
-### Homebrew
-Once you publish a tagged release (e.g., `v0.1.0`), you can install via:
-
-```bash
-brew tap lemomar/herald https://github.com/lemomar/herald
-brew install herald
-```
-
-After installation, enable the shell hook so `herald` can capture the previous command's exit code:
-
+## Install shell hook (`herald`)
 ```bash
 # zsh
 eval "$(herald hook --shell zsh)"
@@ -50,82 +29,92 @@ eval "$(herald hook --shell bash)"
 herald hook --shell fish | source
 ```
 
-## Usage
-
+Or install permanently:
 ```bash
-# basic
-./herald "Build complete"
-
-# with title
-./herald "Build complete" --title "CI"
-
-# verbose output
-./herald "Build complete" --verbose
-
-# with icon (Linux only)
-./herald "Backup finished" --icon /path/to/icon.png
-
-# install shell hook to use previous command's exit code automatically
-# zsh/bash (use the full path or ./herald if not in PATH)
-eval "$(./herald hook --shell zsh)"
-# fish
-./herald hook --shell fish | source
-
-# or install permanently into your shell config
-./herald hook --shell zsh --install
-./herald hook --shell bash --install
-./herald hook --shell fish --install
-
-# after hook: herald uses previous exit code via HERALD_EXIT_CODE
-# and previous command string via HERALD_PREV_CMD for the title fallback
-command; herald
-command; herald "Custom message"
-
-# force derived success/failure message (requires exit code via hook or env)
-command; herald --evaluate
+herald hook --shell zsh --install
+herald hook --shell bash --install
+herald hook --shell fish --install
 ```
 
-## Config
-Default config path: `~/.heraldrc`
+## Usage
 
-Example:
+### One-shot notification
+```bash
+herald "Build complete"
+herald "Build complete" --title "CI"
+herald "Backup finished" --icon /path/to/icon.png
+```
 
+### Daemon control
+```bash
+heraldctl start
+heraldctl status
+heraldctl restart
+heraldctl stop
+```
+
+### Log history
+```bash
+# primary
+heraldctl logs --last 50 --filter build
+
+# compatibility alias
+herald logs --last 50 --filter build
+```
+
+## Config (`~/.heraldrc`)
 ```yaml
-mode: greeting # or "evaluate"
+mode: greeting # or evaluate
 defaults:
   message: "Hello from herald"
   title: "Herald"
   icon: "/path/to/icon.png"
+
+daemon:
+  server_url: "wss://example/ws"
+  token: "secret"
+  reconnect_sec: 5
 ```
 
-Config precedence:
-1. CLI flags
-2. Config defaults
-3. Built-in defaults
+### Daemon config rules
+- `daemon.server_url` is required when starting daemon
+- supported URL schemes: `ws`, `wss`
+- `daemon.reconnect_sec <= 0` defaults to `5`
+- if `daemon.token` is set, daemon sends `Authorization: Bearer <token>` during WS handshake
 
-Built-in defaults:
-- Title: `Herald`
-- Message: `Hello from Herald`
-- Icon: (none)
+## WebSocket event contract
+Daemon expects JSON text frames like:
+```json
+{"title":"Build","message":"Done","icon":"/optional/icon.png"}
+```
 
-Flags:
-- `--exit-code N` pass an exit code to derive a message
-- `--evaluate` use success/failure derived message when exit code is available
+Rules:
+- `message` is required
+- `title` and `icon` are optional
+- unknown fields are ignored
+- invalid payloads are skipped and logged as errors
 
-Config:
-- `mode: greeting|evaluate` (default: `greeting`)
+## Service integration
+`heraldctl start` is service-first and uses user services when available.
 
-Environment:
-- `HERALD_EXIT_CODE` set by the hook to pass the previous command status
-- `HERALD_PREV_CMD` set by the hook to pass the previous command string for title fallback
-- `HERALD_HOOK=1` set by the hook so `herald` knows the hook is installed
+- macOS: `~/Library/LaunchAgents/com.herald.daemon.plist` via `launchctl`
+- Linux: `~/.config/systemd/user/herald-daemon.service` via `systemctl --user`
+- Fallback: background process with PID file when service manager is unavailable
 
-## Exit Codes
-- `0` on success
-- `>0` on error (message printed to stderr)
+## Logs and PID files
+- History: `~/.herald/logs.yaml`
+- PID file: `~/.herald/daemon.pid`
+
+Log records are append-only YAML entries with:
+- `timestamp` (`RFC3339Nano`, UTC)
+- `source`
+- `event`
+- `title`
+- `message`
+- `level`
 
 ## Notes
-- macOS notifications are sent using `osascript`.
-- Linux notifications are sent using `notify-send` (install `libnotify-bin` or equivalent).
-- Windows is not supported in v0.1.
-- macOS notifications do not support custom icons; `--icon` is ignored on macOS.
+- macOS notifications use `osascript`
+- Linux notifications use `notify-send` (install `libnotify-bin` or equivalent)
+- macOS ignores custom icons
+- Windows is not supported

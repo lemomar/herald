@@ -150,3 +150,37 @@ func TestResolveTitle(t *testing.T) {
 		t.Fatalf("expected default title Herald, got %q", title)
 	}
 }
+
+func TestParseFlagValidationBranches(t *testing.T) {
+	if _, err := Parse([]string{"--title"}); err == nil {
+		t.Fatalf("expected missing --title value error")
+	}
+	if _, err := Parse([]string{"--icon"}); err == nil {
+		t.Fatalf("expected missing --icon value error")
+	}
+	if _, err := Parse([]string{"--config"}); err == nil {
+		t.Fatalf("expected missing --config value error")
+	}
+	if _, err := Parse([]string{"--unknown"}); err == nil {
+		t.Fatalf("expected unknown flag error")
+	}
+	if _, err := Parse([]string{"--unknown", "value"}); err == nil {
+		t.Fatalf("expected unknown flag error with explicit value")
+	}
+	if _, err := Parse([]string{"--verbose", "--evaluate", "--title=CI", "done"}); err != nil {
+		t.Fatalf("expected mixed flags to parse, got %v", err)
+	}
+	opts, err := Parse([]string{"--icon", "/tmp/icon.png", "--config", "/tmp/cfg.yaml", "done"})
+	if err != nil {
+		t.Fatalf("expected icon/config parse success, got %v", err)
+	}
+	if opts.Icon != "/tmp/icon.png" || opts.ConfigPath != "/tmp/cfg.yaml" || opts.Message != "done" {
+		t.Fatalf("unexpected parsed options: %+v", opts)
+	}
+}
+
+func TestDerivedMessageNil(t *testing.T) {
+	if msg := derivedMessage(nil); msg != "Hello from Herald" {
+		t.Fatalf("unexpected derived message for nil exit code: %q", msg)
+	}
+}
